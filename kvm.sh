@@ -276,7 +276,7 @@ cat cloud_init.cfg.template > cloud_init.cfg
 
 # emit every user key into authorized keys
 for user in $GH_USER; do
-	printf "  - curl https://github.com/%s.keys | tee -a /home/kube-admin/.ssh/authorized_keys\n" "$user" >> cloud_init.cfg
+	printf "  - curl https://github.com/%s.keys >> /home/kube-admin/.ssh/authorized_keys\n" "$user" >> cloud_init.cfg
 done
 
 # create a virtual machine
