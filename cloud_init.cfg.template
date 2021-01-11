@@ -35,5 +35,3 @@ bootcmd:
 
 runcmd:
   - mkdir -p /home/kube-admin/.ssh || true
-  - chmod -R u=rwX,g=rX,o= /home/kube-admin/.ssh
-  - chown -R kube-admin:kube-admin /home/kube-admin/.ssh

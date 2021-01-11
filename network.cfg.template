@@ -1,15 +1,6 @@
 version: 2
 ethernets:
   eth0:
-    addresses: ["VIRTUAL_IP"]
-    gateway4: ["GATEWAY"]
-    nameservers:
-      search: ["DOMAIN"]
-
+    dhcp4: true
   eth1:
-    match:
-      macaddress: "HOST_MAC"
-    addresses: ["HOST_IP"]
-    gateway4: ["GATEWAY"]
-    nameservers:
-      search: ["DOMAIN"]
+    dhcp4: true

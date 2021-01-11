@@ -43,6 +43,7 @@ help() {
 		"" \
 		"Options:" \
 		"" \
+		"--prefix             DEFAULT: $(whoami), the prefix to use for kube node names" \
 		"--masters            DEFAULT: 1, the number of master nodes to create (min: 1, max: 50)" \
 		"--workers            DEFAULT: 1, the number of worker nodes to create (min: 1, max: 50)" \
 		"--os-version         DEFAULT: 7, the version of CentOS to use" \
@@ -51,21 +52,7 @@ help() {
 		"--memory             DEFAULT: 4096, the amount of memory to allocate for each node" \
 		"" \
 		"--network            DEFAULT: bridge, the network for bridging VMs within qemu" \
-		"--gateway            DEFAULT: 192.168.50.1, the IP address of the gateway for the network subnet" \
 		"--domain             DEFAULT: local, the dns domain used to register IPs" \
-		"" \
-		"--enable-static-ips  DEFAULT: false, a value indicating whether or not to use static ips" \
-		"--proxy-ip           DEFAULT: 192.168.50.100/24, the ip to use for the master load balancer" \
-		"--master-ip          DEFAULT: 192.168.50.101/24, the first ip to use for masters (incremented)" \
-		"--worker-ip          DEFAULT: 192.168.50.151/24, the first ip to use for workers (incremented)" \
-		"" \
-		"--proxy-mac-address  DEFAULT: 01:01:01:01:FF, the mac address used for bridge reservations (incremented)" \
-		"--master-mac-address DEFAULT: 01:01:01:01:01, the mac address used for bridge reservations (incremented)" \
-		"--worker-mac-address DEFAULT: 01:01:01:02:01, the mac address used for bridge reservations (incremented)" \
-		"" \
-		"--virtual-proxy-ip   DEFAULT: 192.168.60.100/24, the ip to use for the master load balancer" \
-		"--virtual-master-ip  DEFAULT: 192.168.60.101/24, the first ip to use for masters (incremented)" \
-		"--virtual-worker-ip  DEFAULT: 192.168.60.151/24, the first ip to use for workers (incremented)" \
 		"" \
 		"NOTE: ONLY THE LAST OCTET OF THE IP ADDRESSES ARE INCREMENTED, PLEASE ENSURE THERE IS ENOUGH IPS AVAILABLE" \
 		"" \
@@ -75,36 +62,25 @@ help() {
 		"" \
 		"Example:" \
 		"" \
-		"./kvm.sh --masters 3 --workers 3 --cpu 4 --memory 8192 --enable-static-ips --gh-user somebody"
+		"./kvm.sh --masters 3 --workers 3 --cpu 4 --memory 8192 --gh-user somebody"
 }
 
+PREFIX=$(whoami)-
 NETWORK="bridge"
-GATEWAY="192.168.50.1"
-DOMAIN="local"
-
-PROXY_IP="192.168.50.100/24"
-PROXY_MAC="02:01:01:01:01:FF"
-PROXY_VIRTUAL_IP="192.168.60.100/24"
 
 MASTER_NODE_COUNT=1
-MASTER_IP="192.168.50.101/24"
-MASTER_MAC="02:01:01:01:01:01"
-MASTER_VIRTUAL_IP="192.168.60.101/24"
-
 WORKER_NODE_COUNT=1
-WORKER_IP="192.168.50.151/24"
-WORKER_MAC="02:01:01:01:02:01"
-WORKER_VIRTUAL_IP="192.168.60.151/24"
 
 CENTOS_VERSION=7
 CPU_LIMIT=2
 MEMORY_LIMIT=4096
 
-ENABLE_STATIC_IPS=
-ENABLE_HOST_DHCP=false
-
 while [ $# -gt 0 ]; do
 	case $1 in
+		--prefix)
+			PREFIX="$2"-
+			shift
+			;;
 		--masters)
 			MASTER_NODE_COUNT=$2
 			shift
@@ -129,10 +105,6 @@ while [ $# -gt 0 ]; do
 			NETWORK=$2
 			shift
 			;;
-		--gateway)
-			GATEWAY=$2
-			shift
-			;;
 		--domain)
 			DOMAIN=$2
 			shift
@@ -140,45 +112,6 @@ while [ $# -gt 0 ]; do
 		--gh-user)
 			GH_USER="$2 $GH_USER"
 			shift
-			;;
-		--proxy-mac-address)
-			PROXY_MAC=$2
-			shift
-			;;
-		--proxy-ip)
-			PROXY_IP=$2
-			shift
-			;;
-		--proxy-virtual-ip)
-			PROXY_VIRTUAL_IP=$2
-			shift
-			;;
-		--master-mac-address)
-			MASTER_MAC=$2
-			shift
-			;;
-		--master-ip)
-			MASTER_IP=$2
-			shift
-			;;
-		--master-virtual-ip)
-			MASTER_VIRTUAL_IP=$2
-			shift
-			;;
-		--worker-mac-address)
-			WORKER_MAC=$2
-			shift
-			;;
-		--worker-ip)
-			WORKER_IP=$2
-			shift
-			;;
-		--worker-virtual-ip)
-			WORKER_VIRTUAL_IP=$2
-			shift
-			;;
-		--enable-static-ips)
-			ENABLE_STATIC_IPS=1
 			;;
 		--help)
 			help
@@ -197,46 +130,6 @@ done
 if [ -z "$GH_USER" ]; then
 	GH_USER=tiffanywang3
 fi
-
-# if static ips are not enabled
-if [ -z "$ENABLE_STATIC_IPS" ]; then
-	# turn on host dhcp
-	ENABLE_HOST_DHCP=true
-
-	# clear the ips
-	PROXY_IP=
-	MASTER_IP=
-	WORKER_IP=
-fi
-
-increment_ip() {
-	value="${1:-}"
-
-	if [ -z "$value" ]; then
-		return
-	fi
-
-	prefix=${value%.*}
-	value=${value##*.}
-
-	octet=${value%/*}
-	subnet=${value##*/}
-
-	octet=$((octet+1))
-
-	printf "%s.%s/%s" "$prefix" "$octet" "$subnet"
-}
-
-increment_mac() {
-	value="${1:-}"
-
-	prefix=${value%:*}
-	value=${value##*:}
-
-	value=$((value+1))
-
-	printf "%s:%02d" "$prefix" "$value"
-}
 
 OS_VARIANT="centos$CENTOS_VERSION.0"
 BASE_IMAGE=CentOS-$CENTOS_VERSION-x86_64-GenericCloud.qcow2
@@ -259,7 +152,7 @@ sudo usermod -a -G libvirt "$USER"
 sudo usermod -a -G kvm "$USER"
 
 # delete existing nodes
-for node in $(sudo virsh list --all --name | grep "kube-"); do
+for node in $(sudo virsh list --all --name | grep "kube-${PREFIX}"); do
 	sudo virsh shutdown "$node"
 	sudo virsh destroy "$node"
 	sudo virsh undefine "$node"
@@ -279,12 +172,13 @@ for user in $GH_USER; do
 	printf "  - curl https://github.com/%s.keys >> /home/kube-admin/.ssh/authorized_keys\n" "$user" >> cloud_init.cfg
 done
 
+printf "  %s\n"  \
+	"- chmod -R u=rwX,g=rX,o= /home/kube-admin/.ssh" \
+	"- chown -R kube-admin:kube-admin /home/kube-admin/.ssh" >> cloud_init.cfg
+
 # create a virtual machine
 create_vm() {
 	hostname=$1
-	virtual_ip=$2
-	host_mac=$3
-	host_ip=${4:-}
 
 	snapshot=$hostname.qcow2
 	init=$hostname-init.img
@@ -295,7 +189,7 @@ create_vm() {
 	# copy the cloud_init.cfg
 	cp cloud_init.cfg "$cloud_cfg"
 
-	if [ "$hostname" = "kube-proxy" ]; then
+	if [ "$hostname" = "kube-${PREFIX}proxy" ]; then
 		# modify the cloud_init to include the haproxy.cfg
 		cat <<- EOF >> "$cloud_cfg"
 		  - systemctl enable haproxy.service
@@ -304,7 +198,7 @@ create_vm() {
 		write_files:
 		- path: /etc/haproxy/haproxy.cfg
 		  encoding: base64
-		  content: $(base64 -w 0 < kube-proxy-haproxy.cfg)
+		  content: $(base64 -w 0 < kube-"${PREFIX}"proxy-haproxy.cfg)
 		EOF
 	fi
 
@@ -314,15 +208,11 @@ create_vm() {
 
 	# insert metadata into init image
 	printf "instance-id: %s\n" "$(uuidgen || printf i-abcdefg)" > "$metadata"
-	printf "local-hostname: %s.local\n" "$hostname" >> "$metadata"
+	printf "local-hostname: %s\n" "$hostname" >> "$metadata"
+	printf "hostname: %s.%s\n" "$hostname" "$DOMAIN" >> "$metadata"
 
 	# create the network config
-	sed "s@VIRTUAL_IP@$virtual_ip@g" network.cfg.template \
-		| sed "s@ENABLE_HOST_DHCP@$ENABLE_HOST_DHCP@g" \
-		| sed "s@GATEWAY@$GATEWAY@g" \
-		| sed "s@DOMAIN@$DOMAIN@g" \
-		| sed "s@HOST_MAC$host_mac@g" \
-		| sed "s@HOST_IP@$host_ip@g" > "$network_cfg"
+	cp network.cfg.template "$network_cfg"
 
 	# setup the cloud-init metadata
 	cloud-localds -v --network-config="$network_cfg" "$init" "$cloud_cfg" "$metadata"
@@ -339,8 +229,8 @@ create_vm() {
 		--disk path="$snapshot",device=disk \
 		--graphics vnc \
 		--os-type Linux --os-variant "$OS_VARIANT" \
-		--network default \
-		--network "$NETWORK",mac="$host_mac" \
+		--network network:default \
+		--network network:"$NETWORK" \
 		--autostart \
 		--noautoconsole
 
@@ -350,50 +240,71 @@ create_vm() {
 
 : $((i=1))
 while [ $((i<=MASTER_NODE_COUNT)) -ne 0 ]; do
-	create_vm \
-		kube-master-"$(printf "%02d" "$i")" \
-		"$MASTER_VIRTUAL_IP" \
-		"$MASTER_MAC" \
-		"$MASTER_IP"
-
-	# increment the mac and ip
-	MASTER_VIRTUAL_IP=$(increment_ip "$MASTER_VIRTUAL_IP")
-	MASTER_MAC=$(increment_mac "$MASTER_MAC")
-	MASTER_IP=$(increment_ip "$MASTER_IP")
+	create_vm kube-"${PREFIX}"master-"$(printf "%02d" "$i")"
 	: $((i=i+1))
 done
 
 : $((i=1))
 while [ $((i<=WORKER_NODE_COUNT)) -ne 0 ]; do
-	create_vm \
-		kube-worker-"$(printf "%02d" "$i")" \
-		"$WORKER_VIRTUAL_IP" \
-		"$WORKER_MAC" \
-		"$WORKER_IP"
-
-	# increment the mac and ip
-	WORKER_VIRTUAL_IP=$(increment_ip "$WORKER_VIRTUAL_IP")
-	WORKER_MAC=$(increment_mac "$WORKER_MAC")
-	WORKER_IP=$(increment_ip "$WORKER_IP")
+	create_vm kube-"${PREFIX}"worker-"$(printf "%02d" "$i")"
 	: $((i=i+1))
 done
 
-# wait for nodes to come up; # todo: replace with until / wait
-sleep 60
-
 # create the haproxy config
-cat haproxy.cfg.template > kube-proxy-haproxy.cfg
+cp haproxy.cfg.template kube-"${PREFIX}"proxy-haproxy.cfg
 
 # iterate over each master node
 : $((i=1))
 while [ $((i<=MASTER_NODE_COUNT)) -ne 0 ]; do
-	name=kube-master-$(printf "%02d" "$i")
-	ip=$(sudo virsh domifaddr --domain "$name" --source agent | grep -w eth1 | grep -E -o '([[:digit:]]{1,3}\.){3}[[:digit:]]{1,3}')
+	name=kube-"$PREFIX"master-$(printf "%02d" "$i")
+
+	until sudo virsh domifaddr --domain "$name" --source agent 2>/dev/null | grep -w eth0 | grep -w ipv4 1>/dev/null; do
+		print_warn "waiting for $name : eth0..."
+		sleep 5
+	done
+
+	vip=$(sudo virsh domifaddr --domain "$name" --source agent | grep -w eth0 | grep -E -o '([[:digit:]]{1,3}\.){3}[[:digit:]]{1,3}')
 
 	# add the ip to the haproxy config
-	printf "    server %s %s:6443 check\n" "$name" "$ip" >> kube-proxy-haproxy.cfg
+	printf "    server %s %s:6443 check\n" "$name" "$vip" >> kube-"${PREFIX}"proxy-haproxy.cfg
 	: $((i=i+1))
 done
 
 # create the ha proxy node
-create_vm kube-proxy "$PROXY_VIRTUAL_IP" "$PROXY_MAC" "$PROXY_IP"
+create_vm kube-"${PREFIX}"proxy "$PROXY_VIRTUAL_IP" "$PROXY_MAC" "$PROXY_IP"
+
+print_machines() {
+	role=$1
+	count=$2
+
+	: $((i=1))
+	while [ $((i<=count)) -ne 0 ]; do
+		name=kube-"$PREFIX""$role"-$(printf "%02d" "$i")
+
+		until sudo virsh domifaddr --domain "$name" --source agent 2>/dev/null | grep -w eth0 | grep -w ipv4 1>/dev/null; do
+			sleep 5
+		done
+
+		until sudo virsh domifaddr --domain "$name" --source agent 2>/dev/null | grep -w eth1 | grep -w ipv4 1>/dev/null; do
+			sleep 5
+		done
+
+		private_ip=$(sudo virsh domifaddr --domain "$name" --source agent | grep -w eth0 | grep -E -o '([[:digit:]]{1,3}\.){3}[[:digit:]]{1,3}')
+		public_ip=$(sudo virsh domifaddr --domain "$name" --source agent | grep -w eth1 | grep -E -o '([[:digit:]]{1,3}\.){3}[[:digit:]]{1,3}')
+
+		printf "  - name: %s\n    role: %s\n    privateAddress: %s\n    publicAddress: %s\n" \
+			"$name" \
+			"$role" \
+			"$private_ip" \
+			"$public_ip"
+
+		: $((i=i+1))
+	done
+}
+
+print_success "The following nodes have been configured:" ""
+
+printf "machines:\n"
+print_machines master "$MASTER_NODE_COUNT"
+printf "\n"
+print_machines worker "$WORKER_NODE_COUNT"

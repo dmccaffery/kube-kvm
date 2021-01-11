@@ -15,7 +15,7 @@ sudo nmcli con add ifname br0 type bridge con-name br0 || true
 sudo nmcli con modify br0 bridge.stp no
 
 # disable netfilter for the bridge network to avoid issues with docker network configs
-sudo cat << EOF > /etc/sysctl.d/bridge.conf
+cat << EOF | sudo tee /etc/sysctl.d/bridge.conf
 net.bridge.bridge-nf-call-ip6tables = 0
 net.bridge.bridge-nf-call-iptables = 0
 net.bridge.bridge-nf-call-arptables = 0
@@ -23,7 +23,7 @@ net.ipv4.ip_forward = 1
 EOF
 
 # activate the netfilter configuration for the bridge device
-sudo cat << EOF > /etc/udev/rules.d/99-bridge.rules
+cat << EOF | sudo tee /etc/udev/rules.d/99-bridge.rules
 ACTION=="add", SUBSYSTEM=="module", KERNEL=="br_netfilter", RUN+="/sbin/sysctl -p /etc/sysctl.d/bridge.conf"
 EOF
 
