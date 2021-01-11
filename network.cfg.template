@@ -1,0 +1,6 @@
+version: 2
+ethernets:
+  eth0:
+     addresses: ["VIRTUAL_IP"]
+  eth1:
+     addresses: ["HOST_IP"]

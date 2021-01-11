@@ -35,6 +35,5 @@ bootcmd:
 
 runcmd:
   - mkdir -p /home/kube-admin/.ssh || true
-  - curl https://github.com/GH_USER.keys | tee -a /home/kube-admin/.ssh/authorized_keys
   - chmod -R u=rwX,g=rX,o= /home/kube-admin/.ssh
   - chown -R kube-admin:kube-admin /home/kube-admin/.ssh

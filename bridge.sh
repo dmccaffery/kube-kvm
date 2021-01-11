@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /usr/bin/env sh
 set -eu
 
 # install all prerequisites
@@ -8,6 +8,30 @@ sudo apt-get install qemu-kvm libvirt-daemon-system \
 
 # make sure libvirtd is enabled
 sudo systemctl enable libvirtd
+
+# delete and recreate the bridge
+sudo nmcli connection delete br0 || true
+sudo nmcli con add ifname br0 type bridge con-name br0 || true
+sudo nmcli con modify br0 bridge.stp no
+
+# disable netfilter for the bridge network to avoid issues with docker network configs
+sudo cat << EOF > /etc/sysctl.d/bridge.conf
+net.bridge.bridge-nf-call-ip6tables = 0
+net.bridge.bridge-nf-call-iptables = 0
+net.bridge.bridge-nf-call-arptables = 0
+net.ipv4.ip_forward = 1
+EOF
+
+# activate the netfilter configuration for the bridge device
+sudo cat << EOF > /etc/udev/rules.d/99-bridge.rules
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="br_netfilter", RUN+="/sbin/sysctl -p /etc/sysctl.d/bridge.conf"
+EOF
+
+# update network configuration
+sudo netplan apply
+
+# wait for connections
+sleep 15
 
 # get a list of active ethernet devices (deal with whitespace)
 OLDIFS=$IFS
@@ -20,26 +44,6 @@ if [ -z "${ACTIVE_CONNECTIONS:-}" ]; then
     echo "no active connections to bridge..."
     exit 1
 fi
-
-# delete and recreate the bridge
-sudo nmcli connection delete br0 || true
-sudo nmcli con add ifname br0 type bridge con-name br0 || true
-sudo nmcli con modify br0 bridge.stp no
-
-# disable netfilter for the bridge network to avoid issues with docker network configs
-sudo cat << EOF > /etc/sysctl.d/bridge.conf
-net.bridge.bridge-nf-call-ip6tables = 0
-net.bridge.bridge-nf-call-iptables = 0
-net.bridge.bridge-nf-call-arptables = 0
-EOF
-
-# activate the netfilter configuration for the bridge device
-sudo cat << EOF > /etc/udev/rules.d/99-bridge.rules
-ACTION=="add", SUBSYSTEM=="module", KERNEL=="br_netfilter", RUN+="/sbin/sysctl -p /etc/sysctl.d/bridge.conf"
-EOF
-
-# update network configuration
-sudo netplan apply
 
 # iterate over each device
 for connection in "${ACTIVE_CONNECTIONS[@]}"; do
