@@ -51,6 +51,8 @@ help() {
 		"--memory             DEFAULT: 4096, the amount of memory to allocate for each node" \
 		"" \
 		"--network            DEFAULT: bridge, the network for bridging VMs within qemu" \
+		"--gateway            DEFAULT: 192.168.50.1, the IP address of the gateway for the network subnet" \
+		"--domain             DEFAULT: local, the dns domain used to register IPs" \
 		"" \
 		"--enable-static-ips  DEFAULT: false, a value indicating whether or not to use static ips" \
 		"--proxy-ip           DEFAULT: 192.168.50.100/24, the ip to use for the master load balancer" \
@@ -76,6 +78,10 @@ help() {
 		"./kvm.sh --masters 3 --workers 3 --cpu 4 --memory 8192 --enable-static-ips --gh-user somebody"
 }
 
+NETWORK="bridge"
+GATEWAY="192.168.50.1"
+DOMAIN="local"
+
 PROXY_IP="192.168.50.100/24"
 PROXY_MAC="02:01:01:01:01:FF"
 PROXY_VIRTUAL_IP="192.168.60.100/24"
@@ -89,8 +95,6 @@ WORKER_NODE_COUNT=1
 WORKER_IP="192.168.50.151/24"
 WORKER_MAC="02:01:01:01:02:01"
 WORKER_VIRTUAL_IP="192.168.60.151/24"
-
-NETWORK="bridge"
 
 CENTOS_VERSION=7
 CPU_LIMIT=2
@@ -123,6 +127,14 @@ while [ $# -gt 0 ]; do
 			;;
 		--network)
 			NETWORK=$2
+			shift
+			;;
+		--gateway)
+			GATEWAY=$2
+			shift
+			;;
+		--domain)
+			DOMAIN=$2
 			shift
 			;;
 		--gh-user)
@@ -305,9 +317,12 @@ create_vm() {
 	printf "local-hostname: %s.local\n" "$hostname" >> "$metadata"
 
 	# create the network config
-	sed "s@VIRTUAL_IP@${virtual_ip}@g" network.cfg.template \
-		| sed "s@ENABLE_HOST_DHCP@${ENABLE_HOST_DHCP}@g" \
-		| sed "s@HOST_IP@${host_ip}@g" > "$network_cfg"
+	sed "s@VIRTUAL_IP@$virtual_ip@g" network.cfg.template \
+		| sed "s@ENABLE_HOST_DHCP@$ENABLE_HOST_DHCP@g" \
+		| sed "s@GATEWAY@$GATEWAY@g" \
+		| sed "s@DOMAIN@$DOMAIN@g" \
+		| sed "s@HOST_MAC$host_mac@g" \
+		| sed "s@HOST_IP@$host_ip@g" > "$network_cfg"
 
 	# setup the cloud-init metadata
 	cloud-localds -v --network-config="$network_cfg" "$init" "$cloud_cfg" "$metadata"
