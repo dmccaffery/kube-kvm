@@ -1,7 +1,7 @@
 #! /usr/bin/env sh
 # shellcheck disable=SC2155
 
-set -e
+set -eu
 
 FORMAT_CLEAR=$(tput sgr0)	# CLEAR ALL FORMAT
 FORMAT_BOLD=$(tput bold)	# SET BRIGH
@@ -67,6 +67,7 @@ help() {
 
 PREFIX=$(whoami)-
 NETWORK="bridge"
+DOMAIN="local"
 
 MASTER_NODE_COUNT=1
 WORKER_NODE_COUNT=1
@@ -74,6 +75,8 @@ WORKER_NODE_COUNT=1
 CENTOS_VERSION=7
 CPU_LIMIT=2
 MEMORY_LIMIT=4096
+
+GH_USER=
 
 while [ $# -gt 0 ]; do
 	case $1 in
@@ -159,7 +162,7 @@ for node in $(sudo virsh list --all --name | grep "kube-${PREFIX}"); do
 done
 
 # remove existing configs
-rm -f kube-*
+rm -f kube-"$PREFIX"*
 
 # ensure base image is accessible
 sudo chmod u=rw,go=r "$BASE_IMAGE"
@@ -271,7 +274,7 @@ while [ $((i<=MASTER_NODE_COUNT)) -ne 0 ]; do
 done
 
 # create the ha proxy node
-create_vm kube-"${PREFIX}"proxy "$PROXY_VIRTUAL_IP" "$PROXY_MAC" "$PROXY_IP"
+create_vm kube-"${PREFIX}"proxy
 
 print_machines() {
 	role=$1
